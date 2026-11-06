@@ -49,13 +49,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Install SDK packages
-        run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
       - name: Build APK
-        run: bash android/build_apk.sh
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls "$ANDROID_SDK_ROOT/build-tools" || true
+          SDKM=$(ls "$ANDROID_SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1 || true)
+          if [ -n "$SDKM" ]; then yes | "$SDKM" --licenses >/dev/null 2>&1 || true; fi
+          bash android/build_apk.sh
       - uses: actions/upload-artifact@v4
         with:
           name: vault-runner-apk
