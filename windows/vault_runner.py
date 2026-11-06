@@ -2,22 +2,18 @@
 """
 Portable Privacy Vault - Windows launcher.
 
-Finds the vault USB drive, then starts a shell whose entire user profile
-(HOME, USERPROFILE, APPDATA, LOCALAPPDATA, TEMP) points at the vault's
-SharedData folder.  Programs launched from that shell therefore read and
-write their data on the USB stick instead of the host machine.
+Finds the vault USB drive and boots its preconfigured Debian system image in
+an isolated QEMU virtual machine.  Vault/SharedData is shared into the guest
+as /home/vault over virtio-9p, so the guest persists data to the USB drive and
+the Windows filesystem is not exposed to the VM.
 
-This is the "portable profile" isolation strategy for Windows; it needs no
-administrator rights and no driver.  If Windows Subsystem for Linux (WSL) is
-available it can additionally start a Linux workspace inside the vault.
+QEMU for Windows is auto-detected on PATH, under C:\\Program Files\\qemu, or in
+Launchers/qemu. If it is missing, install it from https://www.qemu.org/download/
 """
 
 from __future__ import annotations
 
 import argparse
-import json
-import os
-import shutil
 import string
 import subprocess
 import sys
@@ -31,118 +27,111 @@ for candidate in (_here, _here.parent / "core"):
 import vaultlib  # noqa: E402
 
 
-def windows_ready_volumes() -> list[Path]:
-    """Return drive roots that look like removable vault drives."""
+def windows_vault_roots() -> list[Path]:
     roots: list[Path] = []
     for letter in string.ascii_uppercase:
         root = Path(f"{letter}:\\")
-        if root.exists() and (root / "Vault" / "SharedData").is_dir():
-            roots.append(root)
+        try:
+            if root.exists() and (root / "Vault").is_dir():
+                roots.append(root)
+        except OSError:
+            continue
     return roots
 
 
 def find_vault_windows(explicit: str | None) -> vaultlib.Vault | None:
     if explicit:
         return vaultlib.find_vault(explicit)
-    for root in windows_ready_volumes():
+    for root in windows_vault_roots():
         vault = vaultlib.find_vault(str(root))
         if vault:
             return vault
-    # Fall back to the generic (cross-platform) detector.
     return vaultlib.find_vault()
 
 
-def build_isolated_env(vault: vaultlib.Vault) -> dict:
-    """Return an environment whose profile lives entirely on the vault."""
-    base = vault.shareddata
-    sub = {
-        "HOME": base,
-        "USERPROFILE": base,
-        "APPDATA": base / "Settings" / "AppData" / "Roaming",
-        "LOCALAPPDATA": base / "Settings" / "AppData" / "Local",
-        "TEMP": base / ".tmp",
-        "TMP": base / ".tmp",
-        "HOMEDRIVE": str(base.anchor or "C:"),
-        "HOMEPATH": str(base),
-        "OneDrive": base / "Documents",
-        "VAULT_SESSION": "1",
-    }
-    env = os.environ.copy()
-    for key, path in sub.items():
-        if key in ("VAULT_SESSION", "HOMEDRIVE"):
-            env[key] = str(path)
-            continue
-        path = Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        env[key] = str(path)
-    return env
-
-
-def wsl_available() -> bool:
-    if shutil.which("wsl") is None:
-        return False
-    try:
-        return subprocess.run(
-            ["wsl", "-l", "-q"], capture_output=True, timeout=8
-        ).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def launch_wsl(vault: vaultlib.Vault) -> int:
-    """Start a WSL bash whose working dir is the mounted vault (if visible)."""
-    win_shared = str(vault.shareddata)
-    # Convert C:\a\b -> /mnt/c/a/b for WSL.
-    drive = win_shared[0].lower()
-    wsl_path = "/mnt/" + drive + win_shared[2:].replace("\\", "/")
-    script = (
-        f"export HOME='{wsl_path}'; cd '{wsl_path}' || true; "
-        f"echo 'Vault (WSL) home:' $HOME; exec bash"
-    )
-    print(f"Starting WSL workspace at {wsl_path}")
-    return subprocess.call(["wsl", "bash", "-lc", script])
-
-
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Start the Portable Privacy Vault workspace.")
-    parser.add_argument("--vault", help="explicit vault mount root")
-    parser.add_argument("--wsl", action="store_true", help="start a WSL Linux workspace instead of cmd")
-    parser.add_argument("--shell", default=os.environ.get("COMSPEC", "cmd.exe"))
-    parser.add_argument("--dry-run", action="store_true", help="print the isolated profile and exit")
+    parser = argparse.ArgumentParser(
+        description="Boot the Portable Privacy Vault VM (HOME = USB SharedData)."
+    )
+    parser.add_argument("--vault", help="explicit vault drive root, e.g. E:\\")
+    parser.add_argument("--qemu", help="path to qemu-system-x86_64.exe")
+    parser.add_argument("--memory", type=int, help="guest RAM in MiB")
+    parser.add_argument("--cpus", type=int, help="guest vCPUs")
+    parser.add_argument("--accel", choices=["auto", "whpx", "tcg"], default="auto",
+                        help="virtualisation backend (default: auto)")
+    parser.add_argument("--display", default="default",
+                        choices=["default", "gtk", "sdl", "none", "nographic"],
+                        help="QEMU display backend (default: auto)")
+    parser.add_argument("--headless", action="store_true", help="same as --display none")
+    parser.add_argument("--offline", action="store_true", help="disable guest networking")
+    parser.add_argument("--no-verify", action="store_true", help="skip system.img checksum")
+    parser.add_argument("--dry-run", action="store_true", help="print the QEMU command and exit")
+    parser.add_argument("extra", nargs=argparse.REMAINDER,
+                        help="extra QEMU arguments after --")
     args = parser.parse_args(argv)
 
     vault = find_vault_windows(args.vault)
     if not vault:
         print("ERROR: no Portable Privacy Vault found.", file=sys.stderr)
-        print("Plug in the vault USB drive and try again.", file=sys.stderr)
+        print("Plug in the vault USB drive, or pass --vault E:\\", file=sys.stderr)
         return 1
 
-    vaultlib.create_layout(vault.root)
-    vault = find_vault_windows(str(vault.root)) or vault
+    vault = vaultlib.create_layout(vault.root)
+    if not vault.system_image.is_file():
+        print(f"ERROR: missing {vault.system_image}", file=sys.stderr)
+        print("Run: python installer\\usb_installer.py fetch <drive>", file=sys.stderr)
+        return 1
+
+    if not args.no_verify:
+        print("Verifying system image checksum...")
+        ok, message = vaultlib.verify_image(vault)
+        if not ok:
+            print(f"ERROR: {message}", file=sys.stderr)
+            print("Re-run the installer 'fetch' command to repair the image.", file=sys.stderr)
+            return 1
+        print(f"  {message}")
+
+    qemu = vaultlib.find_qemu(args.qemu)
+    if not qemu:
+        print("ERROR: qemu-system-x86_64.exe was not found.", file=sys.stderr)
+        print("Install QEMU for Windows (https://www.qemu.org/download/#windows),", file=sys.stderr)
+        print("or place it in Launchers\\qemu\\ and try again.", file=sys.stderr)
+        return 1
+
+    display = "none" if args.headless else args.display
+    extra = list(args.extra)
+    if extra and extra[0] == "--":
+        extra = extra[1:]
+
+    accel = None if args.accel == "auto" else args.accel
+    cmd = vaultlib.build_qemu_command(
+        vault, qemu, accel=accel, memory=args.memory, cpus=args.cpus,
+        display=display, offline=args.offline, extra=extra,
+    )
 
     print("=" * 62)
-    print("Portable Privacy Vault - Windows workspace")
+    print("Portable Privacy Vault - Windows VM")
     print("=" * 62)
     print(f"  vault     : {vault.root}")
-    print(f"  workspace : {vault.shareddata}")
-    print(f"  uuid      : {vault.config.get('vault_uuid', '?')}")
+    print(f"  system    : {vault.system_image}")
+    print(f"  workspace : {vault.shareddata}  ->  9p:/home/vault")
+    print(f"  qemu      : {qemu}")
+    print(f"  user      : {vault.config.get('vm', {}).get('user', 'vault')} "
+          f"(password: {vault.config.get('vm', {}).get('password', 'vault')})")
     print()
 
     if args.dry_run:
-        env = build_isolated_env(vault)
-        for key in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP"):
-            print(f"  {key} = {env[key]}")
+        print("QEMU command:\n  " + " \\\n  ".join(cmd))
         return 0
 
-    if args.wsl and wsl_available():
-        return launch_wsl(vault)
-
-    env = build_isolated_env(vault)
-    print("Starting isolated shell (profile on USB, host profile untouched)...")
+    print("Starting the VM (close the QEMU window or press Ctrl+C to stop)...")
     try:
-        return subprocess.call([args.shell], env=env, cwd=str(vault.shareddata))
+        return subprocess.call(cmd)
     except KeyboardInterrupt:
         return 130
+    except OSError as exc:
+        print(f"ERROR: could not start QEMU: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

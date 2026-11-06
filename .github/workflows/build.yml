@@ -11,8 +11,67 @@ permissions:
   contents: write
 
 jobs:
+  sanity:
+    name: Source sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Python sources
+        run: |
+          python3 -m py_compile core/vaultlib.py installer/usb_installer.py \
+            linux/vault_runner.py windows/vault_runner.py scripts/build_system_image.py
+      - name: Layout + checksum smoke test
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          python3 installer/usb_installer.py init "$TMP" >/dev/null
+          head -c 1048576 /dev/urandom > "$TMP/Vault/system.img"
+          python3 - "$TMP" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "core")
+          import vaultlib
+          root = Path(sys.argv[1])
+          vault = vaultlib.find_vault(str(root))
+          digest = vaultlib.sha512_file(vault.system_image)
+          vaultlib.update_image_config(vault, sha512=digest)
+          print("recorded", digest)
+          PY
+          python3 installer/usb_installer.py verify "$TMP"
+          python3 linux/vault_runner.py --vault "$TMP" --no-verify --dry-run \
+            --qemu /bin/true --accel tcg --display none | tail -5
+          rm -rf "$TMP"
+
+  system-image:
+    name: Debian system.img
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install QEMU and ISO tools
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage
+      - name: Build preconfigured image
+        run: python3 scripts/build_system_image.py
+      - name: Show result
+        run: ls -lh dist/system.img dist/system.img.sha512 && cat dist/system.img.sha512
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vault-system-image
+          path: |
+            dist/system.img
+            dist/system.img.sha512
+          compression-level: 0
+
   linux-deb:
     name: Linux .deb
+    needs: sanity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +84,7 @@ jobs:
 
   windows-exe:
     name: Windows .exe
+    needs: sanity
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +102,7 @@ jobs:
 
   android-apk:
     name: Android .apk
+    needs: sanity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,17 +125,23 @@ jobs:
   release:
     name: Publish release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux-deb, windows-exe, android-apk]
+    needs: [system-image, linux-deb, windows-exe, android-apk]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
       - name: Collect
         run: |
           mkdir -p release
-          find artifacts -type f \( -name '*.deb' -o -name '*.exe' -o -name '*.apk' \) -exec cp {} release/ \;
+          find artifacts -type f \( -name '*.deb' -o -name '*.exe' -o -name '*.apk' \
+            -o -name 'system.img' -o -name 'system.img.sha512' \) -exec cp {} release/ \;
+          cp installer/usb_installer.py release/usb_installer.py
+          cp core/vaultlib.py release/vaultlib.py
+          ( cd release && sha512sum *.deb *.exe *.apk system.img usb_installer.py vaultlib.py > SHA512SUMS )
           ls -lh release
       - uses: softprops/action-gh-release@v2
         with:
           files: release/*
+          generate_release_notes: true

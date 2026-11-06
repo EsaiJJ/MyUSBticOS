@@ -2,164 +2,113 @@
 """
 Portable Privacy Vault - Linux launcher.
 
-Starts a sandboxed workspace whose HOME is the USB vault's SharedData folder.
-Isolation is provided by bubblewrap (bwrap):
+Boots the vault's preconfigured Debian system image in an isolated QEMU/KVM
+virtual machine.  The USB folder Vault/SharedData is shared into the guest as
+/home/vault using virtio-9p, so the guest can only persist data to the drive;
+the host filesystem is not exposed to the VM at all.
 
-  * the host filesystem is mounted READ-ONLY inside the sandbox,
-  * /tmp is a throw-away tmpfs (nothing is written to the host disk),
-  * the vault's SharedData is the only writable, persistent location,
-  * the host's HOME, caches and history are never touched.
-
-If bwrap is unavailable it degrades to a plain shell with HOME pointed at the
-vault (still persistent, but without filesystem isolation).
+The guest is preconfigured to auto-login as user ``vault`` (password ``vault``)
+and mount the shared folder as its home directory.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-# Allow running straight from the repo as well as from an installed .deb.
 _here = Path(__file__).resolve().parent
-for candidate in (_here, _here.parent / "core"):
+for candidate in (_here, _here.parent / "core", Path("/usr/lib/vault-runner")):
     if (candidate / "vaultlib.py").is_file():
         sys.path.insert(0, str(candidate))
         break
 import vaultlib  # noqa: E402
 
 
-RO_SYSTEM_DIRS = ["/usr", "/bin", "/sbin", "/lib", "/lib64", "/lib32", "/etc", "/opt"]
-GUEST_HOME = "/home/vault"
-
-
-def _existing(paths: list[str]) -> list[str]:
-    return [p for p in paths if os.path.exists(p)]
-
-
-def build_bwrap_command(vault: vaultlib.Vault, argv: list[str], *, offline: bool, gui: bool) -> list[str]:
-    shared = str(vault.shareddata)
-    cmd: list[str] = ["bwrap"]
-
-    # Read-only host system.
-    for d in _existing(RO_SYSTEM_DIRS):
-        cmd += ["--ro-bind", d, d]
-    for d in _existing(["/run", "/var", "/sys"]):
-        cmd += ["--ro-bind", d, d]
-    cmd += ["--ro-bind-try", "/usr/share", "/usr/share"]
-
-    # The one writable, persistent location: the vault.
-    cmd += ["--bind", shared, GUEST_HOME]
-
-    # Ephemeral runtime.
-    cmd += [
-        "--dev", "/dev",
-        "--proc", "/proc",
-        "--tmpfs", "/tmp",
-        "--tmpfs", "/run/user",
-    ]
-
-    # Isolation / lifecycle.
-    cmd += ["--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent"]
-    if offline:
-        cmd += ["--unshare-net"]
-
-    # Environment.
-    env = {
-        "HOME": GUEST_HOME,
-        "USER": os.environ.get("USER", "vault"),
-        "XDG_CONFIG_HOME": f"{GUEST_HOME}/Settings/config",
-        "XDG_DATA_HOME": f"{GUEST_HOME}/Settings/share",
-        "XDG_CACHE_HOME": f"{GUEST_HOME}/.cache",
-        "XDG_DOCUMENTS_DIR": f"{GUEST_HOME}/Documents",
-        "XDG_DOWNLOAD_DIR": f"{GUEST_HOME}/Downloads",
-        "VAULT_SESSION": "1",
-        "TERM": os.environ.get("TERM", "xterm-256color"),
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
-    }
-    if gui:
-        if os.environ.get("DISPLAY"):
-            env["DISPLAY"] = os.environ["DISPLAY"]
-        if os.environ.get("WAYLAND_DISPLAY"):
-            env["WAYLAND_DISPLAY"] = os.environ["WAYLAND_DISPLAY"]
-        if os.environ.get("XDG_RUNTIME_DIR"):
-            env["XDG_RUNTIME_DIR"] = os.environ["XDG_RUNTIME_DIR"]
-        for sock in ("/tmp/.X11-unix", "/run/user"):
-            if os.path.exists(sock):
-                cmd += ["--ro-bind-try", sock, sock]
-    for key, val in env.items():
-        cmd += ["--setenv", key, val]
-
-    cmd += ["--chdir", GUEST_HOME]
-    cmd += ["--", *argv]
-    return cmd
-
-
-def run_plain(vault: vaultlib.Vault, argv: list[str]) -> int:
-    """Fallback: run with HOME on the vault, no isolation."""
-    env = os.environ.copy()
-    env["HOME"] = str(vault.shareddata)
-    env["VAULT_SESSION"] = "1"
-    return subprocess.call(argv, env=env, cwd=str(vault.shareddata))
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Start the Portable Privacy Vault sandboxed workspace."
+        description="Boot the Portable Privacy Vault VM (HOME = USB SharedData)."
     )
     parser.add_argument("--vault", help="explicit vault mount root (skip auto-detect)")
-    parser.add_argument("--shell", default="/bin/bash", help="shell to run (default /bin/bash)")
-    parser.add_argument("--offline", action="store_true", help="disable network in the sandbox")
-    parser.add_argument("--gui", action="store_true", help="share X11/Wayland sockets for GUI apps")
-    parser.add_argument("--dry-run", action="store_true", help="print the sandbox command and exit")
-    parser.add_argument("command", nargs=argparse.REMAINDER,
-                        help="optional command to run instead of an interactive shell")
+    parser.add_argument("--qemu", help="path to qemu-system-x86_64")
+    parser.add_argument("--memory", type=int, help="guest RAM in MiB (default from config)")
+    parser.add_argument("--cpus", type=int, help="guest vCPUs (default from config)")
+    parser.add_argument("--accel", choices=["auto", "kvm", "tcg"], default="auto",
+                        help="virtualisation backend (default: auto)")
+    parser.add_argument("--display", default="default",
+                        choices=["default", "gtk", "sdl", "none", "nographic"],
+                        help="QEMU display backend (default: auto)")
+    parser.add_argument("--headless", action="store_true", help="same as --display none")
+    parser.add_argument("--offline", action="store_true", help="disable guest networking")
+    parser.add_argument("--no-verify", action="store_true", help="skip system.img checksum")
+    parser.add_argument("--dry-run", action="store_true", help="print the QEMU command and exit")
+    parser.add_argument("extra", nargs=argparse.REMAINDER,
+                        help="extra QEMU arguments after --")
     args = parser.parse_args(argv)
 
     vault = vaultlib.find_vault(args.vault)
     if not vault:
         print("ERROR: no Portable Privacy Vault found.", file=sys.stderr)
-        print("Plug in the USB (or pass --vault <mount point>) and try again.", file=sys.stderr)
+        print("Plug in the USB (or pass --vault <mount point>).", file=sys.stderr)
         return 1
 
-    # Ensure the layout is sane even on a drive prepared elsewhere.
-    vaultlib.create_layout(vault.root)
-    vault = vaultlib.find_vault(str(vault.root)) or vault
+    vault = vaultlib.create_layout(vault.root)
+    if not vault.system_image.is_file():
+        print(f"ERROR: missing {vault.system_image}", file=sys.stderr)
+        print("Run: python3 installer/usb_installer.py fetch <mount point>", file=sys.stderr)
+        return 1
+
+    if not args.no_verify:
+        print("Verifying system image checksum...")
+        ok, message = vaultlib.verify_image(vault)
+        if not ok:
+            print(f"ERROR: {message}", file=sys.stderr)
+            print("Re-run the installer 'fetch' command to repair the image.", file=sys.stderr)
+            return 1
+        print(f"  {message}")
+
+    qemu = vaultlib.find_qemu(args.qemu)
+    if not qemu:
+        print("ERROR: qemu-system-x86_64 was not found.", file=sys.stderr)
+        print("Install it with:  sudo apt install qemu-system-x86 qemu-system-gui qemu-utils",
+              file=sys.stderr)
+        return 1
+
+    display = "none" if args.headless else args.display
+    extra = list(args.extra)
+    if extra and extra[0] == "--":
+        extra = extra[1:]
+
+    accel = None if args.accel == "auto" else args.accel
+    cmd = vaultlib.build_qemu_command(
+        vault, qemu, accel=accel, memory=args.memory, cpus=args.cpus,
+        display=display, offline=args.offline, extra=extra,
+    )
 
     print("=" * 62)
-    print("Portable Privacy Vault - Linux workspace")
+    print("Portable Privacy Vault - Linux VM")
     print("=" * 62)
     print(f"  vault     : {vault.root}")
-    print(f"  workspace : {vault.shareddata}  ->  {GUEST_HOME}")
-    print(f"  uuid      : {vault.config.get('vault_uuid', '?')}")
+    print(f"  system    : {vault.system_image}")
+    print(f"  workspace : {vault.shareddata}  ->  9p:/home/vault")
+    print(f"  qemu      : {qemu}")
+    print(f"  user      : {vault.config.get('vm', {}).get('user', 'vault')} "
+          f"(password: {vault.config.get('vm', {}).get('password', 'vault')})")
     print()
 
-    # Command to run inside the sandbox.
-    run = args.command or []
-    if run and run[0] == "--":
-        run = run[1:]
-    if not run:
-        run = [args.shell]
-
-    bwrap = shutil.which("bwrap")
-    if not bwrap:
-        print("bwrap not found - running without filesystem isolation.", file=sys.stderr)
-        print("  (install 'bubblewrap' for full sandboxing)", file=sys.stderr)
-        return run_plain(vault, run)
-
-    cmd = build_bwrap_command(vault, run, offline=args.offline, gui=args.gui)
     if args.dry_run:
-        print("sandbox command:\n  " + " \\\n  ".join(cmd))
+        print("QEMU command:\n  " + " \\\n  ".join(cmd))
         return 0
 
-    print("Starting sandbox (host is read-only; workspace persists to USB)...")
+    print("Starting the VM (close the QEMU window or press Ctrl+C to stop)...")
     try:
         return subprocess.call(cmd)
     except KeyboardInterrupt:
         return 130
+    except OSError as exc:
+        print(f"ERROR: could not start QEMU: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

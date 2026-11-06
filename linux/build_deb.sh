@@ -4,7 +4,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-1.1.0}"
 ARCH="all"
 PKG="vault-runner"
 OUT="$ROOT/dist"
@@ -35,7 +35,7 @@ Type=Application
 Name=Portable Privacy Vault
 Comment=Start the portable sandboxed workspace from the USB vault
 Exec=vault-runner
-Terminal=true
+Terminal=false
 Categories=Utility;System;
 Keywords=vault;usb;portable;privacy;sandbox;
 DESK
@@ -46,14 +46,15 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: $ARCH
-Depends: python3 (>= 3.8), bubblewrap
-Recommends: exfatprogs | exfat-utils
+Depends: python3 (>= 3.8), qemu-system-x86, qemu-utils
+Recommends: qemu-system-gui, exfatprogs | exfat-utils
 Maintainer: Portable Privacy Vault Contributors <noreply@portablevault.local>
 Description: Portable Privacy Vault launcher
- Starts a sandboxed workspace whose home directory is stored on a USB
- vault drive. Uses bubblewrap to mount the host read-only and the vault
- read-write, so nothing is written to the host disk. The same workspace
- is shared with the Windows and Android companion apps.
+ Boots the vault's preconfigured Debian image in an isolated QEMU/KVM
+ virtual machine. The USB folder Vault/SharedData is shared into the
+ guest as /home/vault over virtio-9p, so the guest persists data to the
+ drive and has no access to the host filesystem. The same workspace is
+ shared with the Windows and Android companion apps.
 CONTROL
 
 # Detect installed size in KiB.
