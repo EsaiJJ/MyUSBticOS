@@ -68,7 +68,12 @@ def detect_usb_drives():
         
         if devtype == "disk" and size:
             # Check if it looks like a USB drive (typically smaller than internal drives)
-            size_gb = float(size.replace("G", "").replace("M", "/1024"))
+            # Handle size format like "119,2G" or "119.2G"
+            size_clean = size.replace("G", "").replace("M", "").replace(",", ".")
+            try:
+                size_gb = float(size_clean)
+            except ValueError:
+                size_gb = 0
             # If size is reasonable for a USB (128MB - 256GB)
             if 0.1 < size_gb < 256 and "nvme" not in name.lower():
                 drives.append({
