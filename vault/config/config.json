@@ -1,0 +1,42 @@
+{
+    "vault_uuid": "",
+    "drive_label": "VaultUSB",
+    "shareddata_path": "/Vault/SharedData",
+    "created": "",
+    "format": "exFAT",
+    "container_runtime": "auto-detect",
+    "host_apps": {
+        "windows": {
+            "exe": "vault-runner.exe",
+            "detects_usb": true,
+            "virtualization": "qemu-kvm or windows-subsystem-linux",
+            "ram_limit_mb": 2048,
+            "cpu_limit": "auto"
+        },
+        "linux": {
+            "appimage": "vault-runner.AppImage",
+            "deb_package": "vault-runner.deb",
+            "virtualization": "qemu-kvm, systemd-nspawn, or lxc",
+            "ram_limit_mb": 2048,
+            "cpu_limit": "auto"
+        },
+        "android": {
+            "apk": "vault-runner.apk",
+            "uses_usb_otg": true,
+            "virtualization": "local execution with QEMU guest, container-based",
+            "ram_limit_mb": 1024,
+            "cpu_limit": "auto"
+        }
+    },
+    "shareddata": {
+        "home": "/home/vaultuser",
+        "documents": "/home/vaultuser/Documents",
+        "downloads": "/home/vaultuser/Downloads",
+        "apps": "/home/vaultuser/.local/share/apps"
+    },
+    "environment": {
+        "default_image": "linux-base",
+        "fallback_image": "minimal-env",
+        "persistence": "real-time writes to Vault/SharedData"
+    }
+}
