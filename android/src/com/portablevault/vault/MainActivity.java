@@ -27,7 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Portable Privacy Vault - Android companion app.
+ * Project MyUSBticOS - Android companion app.
  *
  * Uses the Storage Access Framework to locate the USB vault, then hands the
  * preconfigured Debian image to Termux, where QEMU boots it with the vault's
@@ -47,7 +47,7 @@ public class MainActivity extends Activity {
 
     private static final String LAUNCH_SCRIPT =
         "set -u\n" +
-        "echo 'Portable Privacy Vault - Android / Termux'\n" +
+        "echo 'Project MyUSBticOS - Android / Termux'\n" +
         "VAULT=''\n" +
         "for c in \"$@\"; do\n" +
         "  c=\"${c%/}\"\n" +
@@ -80,7 +80,7 @@ public class MainActivity extends Activity {
         "echo 'Starting QEMU (TCG). Debian auto-logs in as user: vault'\n" +
         "echo 'Press Ctrl+C to stop the VM.'\n" +
         "qemu-system-x86_64 \\\n" +
-        "  -name 'Portable Privacy Vault' \\\n" +
+        "  -name 'Project MyUSBticOS' \\\n" +
         "  -machine q35,accel=tcg -cpu max -m 1024 -smp 2 \\\n" +
         "  -drive \"file=$IMG,if=none,id=vaultdisk,format=qcow2\" \\\n" +
         "  -device virtio-blk-pci,drive=vaultdisk,bootindex=1 \\\n" +
@@ -108,7 +108,7 @@ public class MainActivity extends Activity {
         root.setPadding(36, 36, 36, 36);
 
         TextView title = new TextView(this);
-        title.setText("Portable Privacy Vault");
+        title.setText("Project MyUSBticOS");
         title.setTextSize(22);
         title.setGravity(Gravity.CENTER_HORIZONTAL);
 
@@ -440,7 +440,7 @@ public class MainActivity extends Activity {
                 "  echo 'allow-external-apps = true' >> ~/.termux/termux.properties\n" +
                 "  termux-reload-settings\n\n" +
                 "Grant this app the RUN_COMMAND permission (Android settings > Apps > " +
-                "Vault Runner > Permissions), then press 'Launch VM in Termux' again.\n\n" +
+                "MyUSBticOS > Permissions), then press 'Launch VM in Termux' again.\n\n" +
                 "USB-OTG access: Android often blocks direct USB paths for apps. " +
                 "If Termux cannot see /storage/XXXX-XXXX, copy the Vault folder to " +
                 "/sdcard/Vault and select it there.";

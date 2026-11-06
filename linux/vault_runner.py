@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Portable Privacy Vault - Linux launcher.
+Project MyUSBticOS - Linux launcher.
 
 Boots the vault's preconfigured Debian system image in an isolated QEMU/KVM
 virtual machine.  The USB folder Vault/SharedData is shared into the guest as
@@ -28,7 +28,7 @@ import vaultlib  # noqa: E402
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Boot the Portable Privacy Vault VM (HOME = USB SharedData)."
+        description="Boot the Project MyUSBticOS VM (HOME = USB SharedData)."
     )
     parser.add_argument("--vault", help="explicit vault mount root (skip auto-detect)")
     parser.add_argument("--qemu", help="path to qemu-system-x86_64")
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
 
     vault = vaultlib.find_vault(args.vault)
     if not vault:
-        print("ERROR: no Portable Privacy Vault found.", file=sys.stderr)
+        print("ERROR: no Project MyUSBticOS found.", file=sys.stderr)
         print("Plug in the USB (or pass --vault <mount point>).", file=sys.stderr)
         return 1
 
@@ -87,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print("=" * 62)
-    print("Portable Privacy Vault - Linux VM")
+    print("Project MyUSBticOS - Linux VM")
     print("=" * 62)
     print(f"  vault     : {vault.root}")
     print(f"  system    : {vault.system_image}")

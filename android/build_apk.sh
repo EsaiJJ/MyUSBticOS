@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Portable Privacy Vault Android APK using only the Android
+# Build the Project MyUSBticOS Android APK using only the Android
 # build-tools (aapt2 / d8 / zipalign / apksigner). No Gradle, no dependencies.
 set -euo pipefail
 

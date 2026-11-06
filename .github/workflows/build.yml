@@ -1,4 +1,4 @@
-name: build
+name: MyUSBticOS build
 
 on:
   push:
@@ -143,5 +143,6 @@ jobs:
           ls -lh release
       - uses: softprops/action-gh-release@v2
         with:
+          name: Project MyUSBticOS ${{ github.ref_name }}
           files: release/*
           generate_release_notes: true

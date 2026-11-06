@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build the Linux .deb package for the Portable Privacy Vault launcher.
+# Build the Linux .deb package for the Project MyUSBticOS launcher.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-VERSION="${VERSION:-1.1.0}"
+VERSION="${VERSION:-1.2.0}"
 ARCH="all"
 PKG="vault-runner"
 OUT="$ROOT/dist"
@@ -32,8 +32,8 @@ chmod 0755 "$STAGE/usr/bin/$PKG"
 cat > "$STAGE/usr/share/applications/$PKG.desktop" <<'DESK'
 [Desktop Entry]
 Type=Application
-Name=Portable Privacy Vault
-Comment=Start the portable sandboxed workspace from the USB vault
+Name=Project MyUSBticOS
+Comment=Start the Project MyUSBticOS sandboxed workspace from the USB vault
 Exec=vault-runner
 Terminal=false
 Categories=Utility;System;
@@ -48,8 +48,8 @@ Priority: optional
 Architecture: $ARCH
 Depends: python3 (>= 3.8), qemu-system-x86, qemu-utils
 Recommends: qemu-system-gui, exfatprogs | exfat-utils
-Maintainer: Portable Privacy Vault Contributors <noreply@portablevault.local>
-Description: Portable Privacy Vault launcher
+Maintainer: Project MyUSBticOS Contributors <noreply@myusbticos.local>
+Description: Project MyUSBticOS launcher
  Boots the vault's preconfigured Debian image in an isolated QEMU/KVM
  virtual machine. The USB folder Vault/SharedData is shared into the
  guest as /home/vault over virtio-9p, so the guest persists data to the

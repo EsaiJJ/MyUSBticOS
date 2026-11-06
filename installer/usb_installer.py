@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Portable Privacy Vault - USB installer / preparer.
+Project MyUSBticOS - USB installer / preparer.
 
 Creates the cross-platform vault layout on a USB drive, downloads the
 preconfigured Debian system image and verifies it.
@@ -43,7 +43,7 @@ for _candidate in _core_candidates:
 import vaultlib  # noqa: E402
 
 
-BANNER = "Portable Privacy Vault - USB Installer"
+BANNER = "Project MyUSBticOS - USB Installer"
 CHUNK = 1024 * 1024
 
 

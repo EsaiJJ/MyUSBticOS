@@ -1,9 +1,10 @@
-# Portable Privacy Vault
+# Project MyUSBticOS
 
-A cross-platform portable workspace on a dual-connector (USB-A + USB-C) flash
-drive. Plug the drive into a Windows, Linux or Android device, start the small
-companion app, and work inside an isolated Debian virtual machine whose home
-directory lives on the USB stick — not on the host machine.
+Project MyUSBticOS is a cross-platform portable workspace on a dual-connector
+(USB-A + USB-C) flash drive. Plug the drive into a Windows, Linux or Android
+device, start the small companion app, and work inside an isolated Debian
+virtual machine whose home directory lives on the USB stick — not on the host
+machine.
 
 This repository contains **working** components, not mock-ups. The VM design
 has been boot-tested end to end with KVM: the guest mounts the USB folder over
@@ -116,7 +117,7 @@ $ sudo python3 usb_installer.py prepare /dev/sdb --fs exfat
 
 ### 2. Install a launcher
 
-* **Linux:** `sudo dpkg -i vault-runner_1.1.0_all.deb` then run `vault-runner`.
+* **Linux:** `sudo dpkg -i vault-runner_1.2.0_all.deb` then run `vault-runner`.
   Requires `qemu-system-x86` and `qemu-utils` (declared as dependencies).
 * **Windows:** run `vault-runner.exe` and install QEMU for Windows from
   <https://www.qemu.org/download/#windows> if it is not already present. The
@@ -165,7 +166,7 @@ $ echo 'allow-external-apps = true' >> ~/.termux/termux.properties
 $ termux-reload-settings
 ```
 
-Then grant the Vault Runner app the `com.termux.permission.RUN_COMMAND`
+Then grant the MyUSBticOS app the `com.termux.permission.RUN_COMMAND`
 permission in Android settings and press **Launch VM in Termux**. The Debian
 serial console opens inside Termux.
 
@@ -221,7 +222,7 @@ $ python -m PyInstaller --clean --noconfirm windows/vault-runner.spec
 $ bash android/build_apk.sh
 ```
 
-On a tag `v1.1.0` the GitHub Actions workflow builds the system image, the
+On a tag `v1.2.0` the GitHub Actions workflow builds the system image, the
 three launchers and publishes everything (including `system.img` and its
 checksum) as a release.
 

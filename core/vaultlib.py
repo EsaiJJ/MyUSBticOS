@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Portable Privacy Vault - shared core library.
+Project MyUSBticOS - shared core library.
 
 Handles vault discovery, configuration, image verification and QEMU command
 construction so the Windows/Linux launchers and the USB installer agree on one
@@ -50,8 +50,8 @@ GUEST_HOME = "/home/vault"
 GUEST_USER = "vault"
 GUEST_PASSWORD = "vault"
 
-PROJECT_VERSION = "1.1.0"
-GITHUB_REPO = "EsaiJJ/portable-privacy-vault"
+PROJECT_VERSION = "1.2.0"
+GITHUB_REPO = "EsaiJJ/MyUSBticOS"
 RELEASE_BASE_URL = f"https://github.com/{GITHUB_REPO}/releases/latest/download"
 SYSTEM_IMAGE_URL = f"{RELEASE_BASE_URL}/system.img"
 SYSTEM_IMAGE_SHA_URL = f"{RELEASE_BASE_URL}/system.img.sha512"
@@ -420,7 +420,7 @@ def build_qemu_command(
     cpu = "host" if chosen == "kvm" else "max"
     cmd: list[str] = [
         qemu,
-        "-name", "Portable Privacy Vault",
+        "-name", "Project MyUSBticOS",
         "-machine", f"q35,accel={chosen}",
         "-cpu", cpu,
         "-m", str(memory),

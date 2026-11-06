@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Portable Privacy Vault - Windows launcher.
+Project MyUSBticOS - Windows launcher.
 
 Finds the vault USB drive and boots its preconfigured Debian system image in
 an isolated QEMU virtual machine.  Vault/SharedData is shared into the guest
@@ -27,6 +27,14 @@ for candidate in (_here, _here.parent / "core"):
 import vaultlib  # noqa: E402
 
 
+def _set_console_title() -> None:
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleTitleW("Project MyUSBticOS")
+    except Exception:
+        pass
+
+
 def windows_vault_roots() -> list[Path]:
     roots: list[Path] = []
     for letter in string.ascii_uppercase:
@@ -50,8 +58,9 @@ def find_vault_windows(explicit: str | None) -> vaultlib.Vault | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _set_console_title()
     parser = argparse.ArgumentParser(
-        description="Boot the Portable Privacy Vault VM (HOME = USB SharedData)."
+        description="Boot the Project MyUSBticOS VM (HOME = USB SharedData)."
     )
     parser.add_argument("--vault", help="explicit vault drive root, e.g. E:\\")
     parser.add_argument("--qemu", help="path to qemu-system-x86_64.exe")
@@ -72,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
 
     vault = find_vault_windows(args.vault)
     if not vault:
-        print("ERROR: no Portable Privacy Vault found.", file=sys.stderr)
+        print("ERROR: no Project MyUSBticOS found.", file=sys.stderr)
         print("Plug in the vault USB drive, or pass --vault E:\\", file=sys.stderr)
         return 1
 
@@ -110,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print("=" * 62)
-    print("Portable Privacy Vault - Windows VM")
+    print("Project MyUSBticOS - Windows VM")
     print("=" * 62)
     print(f"  vault     : {vault.root}")
     print(f"  system    : {vault.system_image}")

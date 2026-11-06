@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for the Windows launcher.
+# PyInstaller spec for the Project MyUSBticOS Windows launcher.
 # Build with:  pyinstaller --clean windows/vault-runner.spec
 from pathlib import Path
 
@@ -28,6 +28,7 @@ exe = EXE(
     a.datas,
     [],
     name="vault-runner",
+    version=str(WIN / "version_info.txt"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
