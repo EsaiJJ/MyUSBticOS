@@ -1,0 +1,82 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux-deb:
+    name: Linux .deb
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build .deb
+        run: bash linux/build_deb.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vault-runner-deb
+          path: dist/*.deb
+
+  windows-exe:
+    name: Windows .exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pyinstaller
+      - name: Build exe
+        run: python -m PyInstaller --clean --noconfirm windows/vault-runner.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vault-runner-exe
+          path: dist/vault-runner.exe
+
+  android-apk:
+    name: Android .apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - name: Build APK
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        run: bash android/build_apk.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vault-runner-apk
+          path: dist/vault-runner.apk
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-deb, windows-exe, android-apk]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Collect
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name '*.deb' -o -name '*.exe' -o -name '*.apk' \) -exec cp {} release/ \;
+          ls -lh release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
